@@ -1,4 +1,6 @@
-"""Trains a model and logs the experiment run to MLflow."""
+"""Trains a model, logs the run to MLflow, and (optionally) registers it
+in the MLflow Model Registry so the serving layer can pull it by
+name/stage instead of relying on a local file."""
 import argparse
 import os
 from pathlib import Path
@@ -19,6 +21,13 @@ def main() -> None:
     parser.add_argument("--max-depth", type=int, default=6)
     parser.add_argument("--model-out", type=str, default="models/model.joblib")
     parser.add_argument("--experiment", type=str, default="mlops-mini-lab")
+    parser.add_argument(
+        "--registered-model-name",
+        type=str,
+        default=None,
+        help="If set, registers the trained model in the MLflow Model "
+        "Registry under this name (e.g. mlops-mini-lab).",
+    )
     args = parser.parse_args()
 
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "file:./mlruns")
@@ -32,7 +41,7 @@ def main() -> None:
     X_train, y_train = train_df[feature_cols], train_df["target"]
     X_test, y_test = test_df[feature_cols], test_df["target"]
 
-    with mlflow.start_run():
+    with mlflow.start_run() as run:
         mlflow.log_param("n_estimators", args.n_estimators)
         mlflow.log_param("max_depth", args.max_depth)
         mlflow.log_param("n_features", len(feature_cols))
@@ -55,7 +64,10 @@ def main() -> None:
         }
         mlflow.log_metrics(metrics)
         mlflow.sklearn.log_model(
-            model, artifact_path="model", input_example=X_train.head(2)
+            model,
+            artifact_path="model",
+            input_example=X_train.head(2),
+            registered_model_name=args.registered_model_name,
         )
 
         model_out = Path(args.model_out)
@@ -65,6 +77,15 @@ def main() -> None:
 
         print("Metrics:", metrics)
         print(f"Model saved locally at: {model_out}")
+        print(f"MLflow run id: {run.info.run_id}")
+        if args.registered_model_name:
+            print(
+                f"Registered as '{args.registered_model_name}'. "
+                f"Promote a version to Production via the MLflow UI or:\n"
+                f"  mlflow models transition-stage "
+                f"--name {args.registered_model_name} --version <N> "
+                f"--stage Production"
+            )
 
 
 if __name__ == "__main__":

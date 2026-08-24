@@ -27,7 +27,7 @@ services:
     command: >
       sh -c "python src/data/make_dataset.py &&
              python src/data/prepare.py &&
-             python src/train.py"
+             python src/train.py --registered-model-name mlops-mini-lab"
 
   serve:
     build:
@@ -40,7 +40,14 @@ services:
     volumes:
       - ./models:/app/models:ro
     environment:
-      - MODEL_PATH=/app/models/model.joblib
+      # Default to the plain local file so `docker compose up serve`
+      # keeps working without a registry entry. Switch to the registry
+      # once you've run `train` with --registered-model-name and
+      # promoted a version to Production:
+      #   MODEL_URI=models:/mlops-mini-lab/Production
+      - MODEL_URI=file:./models/model.joblib
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - N_FEATURES=8
 
 volumes:
   mlflow_data:
