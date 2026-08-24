@@ -1,0 +1,35 @@
+stages:
+  make_dataset:
+    cmd: python src/data/make_dataset.py --output data/raw/dataset.csv
+    deps:
+      - src/data/make_dataset.py
+    outs:
+      - data/raw/dataset.csv
+
+  prepare:
+    cmd: python src/data/prepare.py --input data/raw/dataset.csv --output-dir data/processed
+    deps:
+      - src/data/prepare.py
+      - data/raw/dataset.csv
+    outs:
+      - data/processed/train.csv
+      - data/processed/test.csv
+
+  train:
+    cmd: python src/train.py --train-path data/processed/train.csv --test-path data/processed/test.csv --model-out models/model.joblib
+    deps:
+      - src/train.py
+      - data/processed/train.csv
+      - data/processed/test.csv
+    outs:
+      - models/model.joblib
+
+  evaluate:
+    cmd: python src/evaluate.py --model-path models/model.joblib --test-path data/processed/test.csv --output metrics.json
+    deps:
+      - src/evaluate.py
+      - models/model.joblib
+      - data/processed/test.csv
+    metrics:
+      - metrics.json:
+          cache: false

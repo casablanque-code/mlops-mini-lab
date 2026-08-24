@@ -1,0 +1,46 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_SERVE: ${{ github.repository }}/serve
+  IMAGE_TRAIN: ${{ github.repository }}/train
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push serve image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.serve
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_SERVE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_SERVE }}:${{ github.sha }}
+
+      - name: Build & push train image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.train
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_TRAIN }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_TRAIN }}:${{ github.sha }}

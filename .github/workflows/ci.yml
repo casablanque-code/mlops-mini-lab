@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint (ruff)
+        run: ruff check src tests
+
+      - name: Run tests
+        run: pytest tests -v
+
+  smoke-pipeline:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate small dataset
+        run: python src/data/make_dataset.py --n-samples 300 --n-features 6 --output data/raw/dataset.csv
+
+      - name: Prepare data
+        run: python src/data/prepare.py --input data/raw/dataset.csv --output-dir data/processed
+
+      - name: Train smoke model
+        run: |
+          python src/train.py \
+            --train-path data/processed/train.csv \
+            --test-path data/processed/test.csv \
+            --n-estimators 20 \
+            --model-out models/model.joblib
+
+      - name: Evaluate
+        run: python src/evaluate.py --model-path models/model.joblib --test-path data/processed/test.csv
+
+  build-images:
+    runs-on: ubuntu-latest
+    needs: smoke-pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build train image
+        run: docker build -f docker/Dockerfile.train -t mlops-mini-lab-train:ci .
+
+      - name: Build serve image
+        run: docker build -f docker/Dockerfile.serve -t mlops-mini-lab-serve:ci .

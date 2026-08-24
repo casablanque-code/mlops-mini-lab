@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Data & models (треканы через DVC, не через git)
+data/raw/*.csv
+data/processed/*.csv
+models/*.joblib
+!models/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Metrics
+metrics.json
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# DVC
+.dvc/cache
+.dvc/tmp
