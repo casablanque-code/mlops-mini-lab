@@ -1,4 +1,4 @@
-"""Обучение модели с трекингом эксперимента в MLflow."""
+"""Trains a model and logs the experiment run to MLflow."""
 import argparse
 import os
 from pathlib import Path
@@ -54,15 +54,17 @@ def main() -> None:
             "roc_auc": roc_auc_score(y_test, proba),
         }
         mlflow.log_metrics(metrics)
-        mlflow.sklearn.log_model(model, artifact_path="model")
+        mlflow.sklearn.log_model(
+            model, artifact_path="model", input_example=X_train.head(2)
+        )
 
         model_out = Path(args.model_out)
         model_out.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, model_out)
         mlflow.log_artifact(str(model_out))
 
-        print("Метрики:", metrics)
-        print(f"Модель сохранена локально: {model_out}")
+        print("Metrics:", metrics)
+        print(f"Model saved locally at: {model_out}")
 
 
 if __name__ == "__main__":

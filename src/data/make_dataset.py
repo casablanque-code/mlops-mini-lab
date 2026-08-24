@@ -1,6 +1,7 @@
 """
-Генерирует синтетический датасет для задачи бинарной классификации.
-Никаких внешних скачиваний — воспроизводимо и легко для CI/ноутбука.
+Generates a synthetic dataset for a binary classification task.
+No external downloads involved -- fully reproducible and lightweight,
+suitable for CI and a laptop.
 """
 import argparse
 from pathlib import Path
@@ -42,7 +43,7 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
-    print(f"Сохранено {len(df)} строк в {output_path}")
+    print(f"Saved {len(df)} rows to {output_path}")
 
 
 if __name__ == "__main__":

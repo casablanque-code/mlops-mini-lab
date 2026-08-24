@@ -1,82 +1,171 @@
 # mlops-mini-lab
 
-Маленький, но полный домашний MLOps-проект: синтетические данные →
-обучение с трекингом в MLflow → инференс через FastAPI → CI/CD на
-GitHub Actions → Docker Compose. Всё крутится на ноуте, без GPU и
-внешних датасетов.
+A small but complete home MLOps project: synthetic data → model training
+with experiment tracking → inference over a REST API → CI/CD on GitHub
+Actions → Docker Compose. Everything runs on a laptop, no GPU, no
+external datasets to download.
 
-## Стек
+The goal of this repo isn't the model itself (it's a toy RandomForest
+on synthetic data) — it's the end-to-end plumbing around it: data
+versioning, experiment tracking, reproducible pipelines, containerized
+training/serving, and an automated CI/CD flow. That plumbing is the
+same regardless of whether the model behind it is a toy classifier or
+a real production model.
 
-- **Данные**: синтетика (`sklearn.make_classification`), версии — DVC
-- **Обучение**: scikit-learn (RandomForest), трекинг — MLflow
-- **Инференс**: FastAPI + uvicorn
-- **Контейнеризация**: Docker, Docker Compose
-- **CI/CD**: GitHub Actions → GHCR
-- **(этап 2)**: k3d/minikube + Argo CD для GitOps-деплоя
+## Stack
 
-## Быстрый старт (локально, без Docker)
+| Concern              | Tool                                  |
+|-----------------------|----------------------------------------|
+| Data generation        | `scikit-learn` (`make_classification`) |
+| Data/pipeline versioning | DVC                                  |
+| Model training          | scikit-learn (RandomForest)           |
+| Experiment tracking     | MLflow                                |
+| Inference API           | FastAPI + uvicorn                     |
+| Containerization        | Docker, Docker Compose                |
+| CI/CD                  | GitHub Actions → GHCR                 |
+| (stage 2)               | k3d/minikube + Argo CD for GitOps     |
+
+## How the pipeline fits together
+
+```
+make_dataset.py  →  prepare.py  →  train.py  →  evaluate.py  →  serve/app.py
+    (data)            (split)       (model)      (metrics)        (API)
+```
+
+1. **`src/data/make_dataset.py`** generates a synthetic binary
+   classification dataset (`sklearn.datasets.make_classification`).
+   No downloads, fully reproducible via `--seed`.
+2. **`src/data/prepare.py`** splits the data into train/test
+   (80/20, stratified by class) — stands in for a real preprocessing
+   stage.
+3. **`src/train.py`** trains a `RandomForestClassifier` and logs the
+   run to MLflow: hyperparameters, metrics, and the model itself as
+   an artifact. This is what "experiment tracking" buys you — every
+   run is visible and comparable in the MLflow UI.
+4. **`src/evaluate.py`** is a separate evaluation step against the
+   test set; it writes `metrics.json`, which DVC picks up as a
+   pipeline metric (`dvc metrics show`), so you can diff metrics
+   across commits/branches.
+5. **`src/serve/app.py`** is a standalone inference process: it loads
+   `model.joblib` once at startup and serves `/predict`. Training and
+   serving are deliberately separate — training is heavy and
+   infrequent, serving is light and frequent, so they get different
+   Docker images, different resource profiles, and different
+   lifecycles.
+
+`docker-compose.yml` wraps this into three services (`mlflow`,
+`train`, `serve`). CI runs the full pipeline on a small sample on
+every PR to catch breakage before merge. CD builds and pushes the
+`train`/`serve` images to GHCR after every merge to `main`.
+
+## Prerequisites
+
+- Python 3.11+ (3.12 also works)
+- Docker + Docker Compose v2 (`docker compose version`, no dash)
+- Git
+
+## Quick start (local, no Docker)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# полный пайплайн
+# full pipeline
 make pipeline
-# эквивалентно:
+# equivalent to:
 #   python src/data/make_dataset.py
 #   python src/data/prepare.py
 #   python src/train.py
 #   python src/evaluate.py
 
-# поднять инференс локально
+# start the inference service locally
 make serve
-# в другом терминале:
+# in another terminal:
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"features": [0.1, 0.2, -0.3, 0.4, 0.0, 0.7, -0.1, 0.3]}'
 ```
 
-## Через Docker Compose
+`/features` must have as many values as the dataset has feature
+columns (8 by default — see `--n-features` in `make_dataset.py`).
+
+## Using Docker Compose
 
 ```bash
-# 1. обучить модель (одноразовый job-профиль)
+# 1. train a model (one-off job via the "train" profile)
 docker compose --profile train run --rm train
 
-# 2. поднять mlflow UI и инференс-сервис
+# 2. start the MLflow UI and the inference service
 docker compose up -d mlflow serve
 
-# MLflow UI: http://localhost:5000
-# Inference API: http://localhost:8000/docs
+# MLflow UI:      http://localhost:5000
+# Inference API:  http://localhost:8000/docs
 ```
 
-## DVC-пайплайн (воспроизводимость)
+## DVC pipeline (reproducibility)
 
 ```bash
-dvc init          # один раз
-dvc repro          # прогонит make_dataset → prepare → train → evaluate
-dvc metrics show    # покажет metrics.json
+dvc init          # once per repo
+dvc repro          # re-runs make_dataset → prepare → train → evaluate,
+                    # but only the stages whose inputs actually changed
+dvc metrics show    # prints metrics.json
 ```
 
-## Тесты и линт
+## Tests and linting
 
 ```bash
 make test
 make lint
 ```
 
+CI runs the same two commands, plus a smoke run of the whole pipeline
+on a small sample, plus a build of both Docker images.
+
 ## CI/CD
 
-- **CI** (`.github/workflows/ci.yml`): линт, юнит-тесты, smoke-прогон
-  всего пайплайна на маленькой выборке, сборка обоих Docker-образов —
-  запускается на каждый PR и push в `main`.
-- **CD** (`.github/workflows/cd.yml`): при мерже в `main` собирает и
-  пушит `serve`/`train` образы в GitHub Container Registry с тегами
-  `latest` и `<sha>`.
+- **CI** (`.github/workflows/ci.yml`): lint, unit tests, a smoke run
+  of the full pipeline on a small sample, and a build of both Docker
+  images. Runs on every PR and on every push to `main`.
+- **CD** (`.github/workflows/cd.yml`): on every push to `main`, builds
+  and pushes the `serve` and `train` images to the GitHub Container
+  Registry, tagged `latest` and `<commit-sha>`.
 
-## Roadmap (этап 2)
+## Project layout
 
-- [ ] Развернуть `serve` в k3d/minikube через Helm-чарт
-- [ ] Argo CD, следящий за папкой `deploy/` — полноценный GitOps
-- [ ] Model Registry в MLflow с promotion staging → production
-- [ ] Мониторинг дрейфа данных (evidently / whylogs)
+```
+mlops-mini-lab/
+├── data/
+│   ├── raw/                # generated dataset (gitignored, DVC-tracked)
+│   └── processed/          # train/test split (gitignored, DVC-tracked)
+├── src/
+│   ├── data/
+│   │   ├── make_dataset.py
+│   │   └── prepare.py
+│   ├── train.py
+│   ├── evaluate.py
+│   └── serve/
+│       └── app.py
+├── models/                 # trained model artifact (gitignored)
+├── tests/
+│   └── test_pipeline.py
+├── docker/
+│   ├── Dockerfile.train
+│   └── Dockerfile.serve
+├── docker-compose.yml
+├── dvc.yaml                # pipeline DAG for `dvc repro`
+├── .github/workflows/
+│   ├── ci.yml
+│   └── cd.yml
+├── requirements.txt
+├── pyproject.toml          # pytest + ruff config
+├── Makefile
+└── README.md
+```
+
+## Roadmap (stage 2)
+
+- [ ] Deploy `serve` to k3d/minikube via a Helm chart
+- [ ] Argo CD watching a `deploy/` folder — full GitOps loop
+- [ ] MLflow Model Registry with staging → production promotion
+- [ ] Data drift monitoring (evidently / whylogs)

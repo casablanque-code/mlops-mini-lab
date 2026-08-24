@@ -1,4 +1,4 @@
-"""Базовые тесты: генерация данных, обучение на выборке, работоспособность API."""
+"""Core tests: data generation, training on a small sample, API health check."""
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def run(cmd: list[str], cwd: Path = ROOT) -> None:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    assert result.returncode == 0, f"Команда {cmd} упала:\n{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, f"Command {cmd} failed:\n{result.stdout}\n{result.stderr}"
 
 
 def test_make_dataset(tmp_path):
@@ -66,7 +66,7 @@ def test_train_smoke(tmp_path, monkeypatch):
 
 def test_api_health_without_model(monkeypatch):
     monkeypatch.setenv("MODEL_PATH", "models/does_not_exist.joblib")
-    from src.serve.app import app  # импорт после установки переменной окружения
+    from src.serve.app import app  # import after setting the env var
 
     client = TestClient(app)
     resp = client.get("/health")

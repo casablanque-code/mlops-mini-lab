@@ -5,7 +5,7 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Data & models (треканы через DVC, не через git)
+# Data & models (tracked via DVC, not git)
 data/raw/*.csv
 data/processed/*.csv
 models/*.joblib

@@ -1,4 +1,4 @@
-"""Оценивает сохранённую модель на тестовой выборке и пишет metrics.json (для dvc metrics)."""
+"""Evaluates a saved model on the test set and writes metrics.json (used by dvc metrics)."""
 import argparse
 import json
 from pathlib import Path
@@ -30,7 +30,7 @@ def main() -> None:
     }
 
     Path(args.output).write_text(json.dumps(metrics, indent=2))
-    print("Метрики:", metrics)
+    print("Metrics:", metrics)
 
 
 if __name__ == "__main__":

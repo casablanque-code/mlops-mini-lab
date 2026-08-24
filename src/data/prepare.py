@@ -1,4 +1,4 @@
-"""Разбивает сырые данные на train/test и сохраняет в data/processed."""
+"""Splits the raw dataset into train/test and saves them under data/processed."""
 import argparse
 from pathlib import Path
 
@@ -23,7 +23,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     train_df.to_csv(output_dir / "train.csv", index=False)
     test_df.to_csv(output_dir / "test.csv", index=False)
-    print(f"train: {len(train_df)} строк, test: {len(test_df)} строк")
+    print(f"train: {len(train_df)} rows, test: {len(test_df)} rows")
 
 
 if __name__ == "__main__":
