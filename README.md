@@ -169,3 +169,12 @@ mlops-mini-lab/
 - [ ] Argo CD watching a `deploy/` folder — full GitOps loop
 - [ ] MLflow Model Registry with staging → production promotion
 - [ ] Data drift monitoring (evidently / whylogs)
+
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md) -- what each component
+  does, why it's there, and how they connect (with a diagram)
+- [docs/runbook.md](docs/runbook.md) -- step-by-step commands for
+  every workflow, plus a troubleshooting section
+- [docs/decisions.md](docs/decisions.md) -- why things are built the
+  way they are, alternatives considered
