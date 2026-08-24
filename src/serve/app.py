@@ -7,11 +7,15 @@ validation and Prometheus metrics.
 import logging
 import math
 import os
+from contextlib import asynccontextmanager
 from typing import List
 
 import mlflow
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field, conlist, field_validator
 
@@ -29,11 +33,38 @@ logger = logging.getLogger("mlops-mini-lab.serve")
 MODEL_URI = os.environ.get("MODEL_URI", "file:./models/model.joblib")
 N_FEATURES = int(os.environ.get("N_FEATURES", "8"))
 
-app = FastAPI(title="mlops-mini-lab inference", version="0.2.0")
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
 _model = None
 _feature_names: List[str] = []
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        _load_model()
+    except Exception as exc:
+        # Don't crash the process on startup -- /health will report the
+        # problem and /predict will fail loudly, which is easier to debug
+        # in an orchestrated environment than a crash-loop.
+        logger.error("Model failed to load at startup: %s", exc)
+    yield
+
+
+app = FastAPI(title="mlops-mini-lab inference", version="0.2.0", lifespan=lifespan)
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+def _sanitize_for_json(obj):
+    """Replaces NaN/Inf floats with None so error payloads containing the
+    offending input (e.g. Pydantic's validation error 'input' field) can
+    still be JSON-serialized -- Starlette's JSONResponse rejects NaN/Inf
+    outright (allow_nan=False)."""
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
 
 
 def _load_model():
@@ -70,15 +101,13 @@ def get_model():
     return _model
 
 
-@app.on_event("startup")
-def startup():
-    try:
-        _load_model()
-    except Exception as exc:
-        # Don't crash the process on startup -- /health will report the
-        # problem and /predict will fail loudly, which is easier to debug
-        # in an orchestrated environment than a crash-loop.
-        logger.error("Model failed to load at startup: %s", exc)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Default handler serializes exc.errors() with plain json.dumps
+    (allow_nan=False), which raises ValueError whenever the invalid input
+    itself was NaN/Inf -- sanitize before returning."""
+    payload = _sanitize_for_json(jsonable_encoder(exc.errors()))
+    return JSONResponse(status_code=422, content={"detail": payload})
 
 
 class PredictRequest(BaseModel):
