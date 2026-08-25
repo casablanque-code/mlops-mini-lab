@@ -211,3 +211,42 @@ aliases can point at different versions simultaneously (e.g.
 model that as a special case. Since stages are deprecated in the
 current MLflow version this project pins (2.16.2), aliases are also
 simply the supported path going forward.
+
+---
+
+## 11. `mlflow.sklearn.load_model()` instead of `mlflow.pyfunc.load_model()` for Registry-backed models
+
+**Decision:** when `MODEL_URI` points at the MLflow Model Registry (or
+a run), the serving service loads the model via
+`mlflow.sklearn.load_model()`, not the more generic
+`mlflow.pyfunc.load_model()`.
+
+**Context:** the first working version used `pyfunc`, which is MLflow's
+flavor-agnostic loader -- it works the same way regardless of whether
+the underlying model is sklearn, xgboost, torch, etc. It surfaced two
+problems in practice:
+1. The `pyfunc` wrapper enforces the model's saved input schema
+   (column names/types) at `predict()` time, and getting those names
+   back out required reaching into `.metadata.get_input_schema()`
+   rather than the estimator itself (`pyfunc` has no method to unwrap
+   a raw sklearn object).
+2. More importantly, `pyfunc.load_model()` only exposes `predict()`,
+   not `predict_proba()`. The service's `/predict` response depends on
+   the predicted probability, not just the class label -- with
+   `pyfunc`, this silently degraded to a hardcoded `probability: 1.0`
+   fallback instead of a real error, which is a worse failure mode
+   than an exception would have been (see
+   [runbook.md](runbook.md#troubleshooting) for the concrete symptom
+   that surfaced this).
+
+**Why the sklearn-specific loader won:** this project only ever trains
+and serves scikit-learn models -- there's no need for flavor-agnostic
+loading. `mlflow.sklearn.load_model()` returns the actual
+`RandomForestClassifier`, with `predict_proba()`, `feature_names_in_`,
+and every other sklearn API intact, and none of the schema-enforcement
+machinery `pyfunc` adds on top. The tradeoff made explicit: if this
+project ever serves a non-sklearn model, the loader in
+`serve/app.py` would need a flavor-aware branch (or a return to
+`pyfunc` with a schema/proba-aware error path) -- fine for a project
+that's sklearn-only by design, not a decision to carry unexamined into
+a multi-framework setup.

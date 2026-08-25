@@ -250,6 +250,17 @@ Pass the version as a string, not an int: `('mlops-mini-lab',
 'production', '1')`, not `... , 1)`. The underlying protobuf field
 expects a string.
 
+**`probability` is always exactly `1.0` when serving from the MLflow
+Model Registry**
+This means the service loaded the model via `mlflow.pyfunc.load_model()`
+somewhere -- that loader only exposes `predict()`, not
+`predict_proba()`, so a real probability was never available and a
+hardcoded fallback kicked in. `serve/app.py` uses
+`mlflow.sklearn.load_model()` for exactly this reason; if you see this
+again after modifying the loading code, check that it didn't revert to
+the generic `pyfunc` loader. See
+[decisions.md](decisions.md#11-mlflowsklearnload_model-instead-of-mlflowpyfuncload_model-for-registry-backed-models).
+
 **`dvc repro` works but there's no `dvc.lock` in the repo**
 `dvc.lock` is generated the first time `dvc repro` actually runs (it
 records the exact hashes of inputs/outputs for each stage) and should

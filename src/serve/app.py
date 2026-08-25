@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from typing import List
 
 import mlflow
+import mlflow.sklearn
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -108,15 +109,19 @@ def _load_model():
         _feature_names = list(getattr(_model, "feature_names_in_", []))
         logger.info("Loaded local model from %s", local_path)
     else:
-        _model = mlflow.pyfunc.load_model(MODEL_URI)
-        # The underlying sklearn estimator exposes feature_names_in_;
-        # pyfunc wraps it, so we reach into the raw model when available.
-        try:
-            raw = _model.unwrap_python_model()
-            _feature_names = list(getattr(raw, "feature_names_in_", []))
-        except Exception:
-            _feature_names = []
-        logger.info("Loaded model from MLflow URI %s", MODEL_URI)
+        # Use the sklearn flavor loader (not mlflow.pyfunc) so we get a
+        # real RandomForestClassifier back, with predict_proba intact.
+        # mlflow.pyfunc.load_model() returns a generic wrapper that only
+        # exposes predict() -- fine for a class label, but it silently
+        # drops probabilities, which this service's /predict response
+        # relies on.
+        _model = mlflow.sklearn.load_model(MODEL_URI)
+        _feature_names = list(getattr(_model, "feature_names_in_", []))
+        logger.info(
+            "Loaded model from MLflow URI %s (feature_names=%s)",
+            MODEL_URI,
+            _feature_names,
+        )
 
     return _model
 
