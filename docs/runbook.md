@@ -112,14 +112,31 @@ python src/train.py --registered-model-name mlops-mini-lab
 ```
 
 Then set an alias on a version (check the version number in the
-MLflow UI under Models, or via `mlflow models
-get-model-version-by-alias`). **Note:** MLflow deprecated stages
-(`Staging`/`Production`) in favor of aliases -- use `set-registered-model-alias`,
-not `transition-stage`:
+MLflow UI under Models, or via `get_model_version_by_alias` below).
+**Note:** MLflow deprecated stages (`Staging`/`Production`) in favor
+of aliases -- and depending on your installed MLflow version, the
+`mlflow models set-registered-model-alias` CLI command may not exist
+yet (it returned `No such command` on 2.16.2 in testing). The Python
+client works reliably across versions, so use it directly:
 
 ```bash
-mlflow models set-registered-model-alias \
-  --name mlops-mini-lab --alias production --version 1
+python -c "
+from mlflow import MlflowClient
+client = MlflowClient(tracking_uri='http://localhost:5000')
+client.set_registered_model_alias('mlops-mini-lab', 'production', '1')
+"
+```
+Note the version is passed as a **string** (`'1'`, not `1`) --
+passing an int raises `TypeError: bad argument type for built-in
+operation` (an MLflow API quirk, at least on 2.16.2).
+
+Verify it took effect:
+```bash
+python -c "
+from mlflow import MlflowClient
+client = MlflowClient(tracking_uri='http://localhost:5000')
+print(client.get_model_version_by_alias('mlops-mini-lab', 'production'))
+"
 ```
 
 Point the serving service at the registry instead of the local file,
@@ -130,13 +147,10 @@ export MLFLOW_TRACKING_URI=http://localhost:5000
 make serve
 ```
 
-To roll back, just repoint the same alias at a previous version and
-restart the serving process (the model is cached in memory, so a
-running process won't pick up the change until it reloads):
-```bash
-mlflow models set-registered-model-alias \
-  --name mlops-mini-lab --alias production --version 1
-```
+To roll back, repoint the same alias at a previous version (same
+Python snippet as above, with a different version number) and restart
+the serving process (the model is cached in memory, so a running
+process won't pick up the change until it reloads).
 
 **Note:** the Model Registry requires a database-backed MLflow
 tracking server (not the default `file:./mlruns`). Start one with:
@@ -214,13 +228,27 @@ Usually a Python version mismatch. CI pins `python-version: "3.11"` in
 version, dependency resolution can differ subtly. Match the CI version
 locally when debugging a CI-only failure.
 
-**`mlflow models transition-stage` doesn't exist / stages don't appear
-in the UI**
+**`mlflow models transition-stage` / `set-registered-model-alias`
+doesn't exist as a CLI command**
 MLflow deprecated stages (`Staging`/`Production`) in favor of aliases
-starting around 2.9. Use `mlflow models set-registered-model-alias`
-and the `models:/<name>@<alias>` URI syntax instead -- see
-[Registering a model](#registering-a-model-and-promoting-it-to-production)
-above.
+starting around 2.9, but CLI coverage for alias commands has been
+inconsistent across versions (`No such command` on 2.16.2 in testing).
+Use the Python client directly instead -- it's stable across versions:
+```bash
+python -c "
+from mlflow import MlflowClient
+client = MlflowClient(tracking_uri='http://localhost:5000')
+client.set_registered_model_alias('mlops-mini-lab', 'production', '1')
+"
+```
+See [Registering a model](#registering-a-model-and-promoting-it-to-production)
+above for the full flow.
+
+**`TypeError: bad argument type for built-in operation` from
+`set_registered_model_alias`**
+Pass the version as a string, not an int: `('mlops-mini-lab',
+'production', '1')`, not `... , 1)`. The underlying protobuf field
+expects a string.
 
 **`dvc repro` works but there's no `dvc.lock` in the repo**
 `dvc.lock` is generated the first time `dvc repro` actually runs (it
