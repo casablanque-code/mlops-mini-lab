@@ -111,18 +111,31 @@ version in the MLflow Model Registry:
 python src/train.py --registered-model-name mlops-mini-lab
 ```
 
-Then promote a version (check the version number in the MLflow UI
-under Models):
+Then set an alias on a version (check the version number in the
+MLflow UI under Models, or via `mlflow models
+get-model-version-by-alias`). **Note:** MLflow deprecated stages
+(`Staging`/`Production`) in favor of aliases -- use `set-registered-model-alias`,
+not `transition-stage`:
+
 ```bash
-mlflow models transition-stage \
-  --name mlops-mini-lab --version 1 --stage Production
+mlflow models set-registered-model-alias \
+  --name mlops-mini-lab --alias production --version 1
 ```
 
-Point the serving service at the registry instead of the local file:
+Point the serving service at the registry instead of the local file,
+using the `@alias` URI syntax:
 ```bash
-export MODEL_URI=models:/mlops-mini-lab/Production
+export MODEL_URI=models:/mlops-mini-lab@production
 export MLFLOW_TRACKING_URI=http://localhost:5000
 make serve
+```
+
+To roll back, just repoint the same alias at a previous version and
+restart the serving process (the model is cached in memory, so a
+running process won't pick up the change until it reloads):
+```bash
+mlflow models set-registered-model-alias \
+  --name mlops-mini-lab --alias production --version 1
 ```
 
 **Note:** the Model Registry requires a database-backed MLflow
@@ -200,3 +213,20 @@ Usually a Python version mismatch. CI pins `python-version: "3.11"` in
 `.github/workflows/ci.yml`; if your local venv is on a different minor
 version, dependency resolution can differ subtly. Match the CI version
 locally when debugging a CI-only failure.
+
+**`mlflow models transition-stage` doesn't exist / stages don't appear
+in the UI**
+MLflow deprecated stages (`Staging`/`Production`) in favor of aliases
+starting around 2.9. Use `mlflow models set-registered-model-alias`
+and the `models:/<name>@<alias>` URI syntax instead -- see
+[Registering a model](#registering-a-model-and-promoting-it-to-production)
+above.
+
+**`dvc repro` works but there's no `dvc.lock` in the repo**
+`dvc.lock` is generated the first time `dvc repro` actually runs (it
+records the exact hashes of inputs/outputs for each stage) and should
+be committed alongside `dvc.yaml` -- it's what lets a teammate (or CI)
+verify the pipeline reproduces the same result, and what `dvc repro`
+compares against to decide whether a stage needs to re-run at all. If
+you don't see it, run `dvc init` (once) and `dvc repro`, then `git add
+dvc.lock`.

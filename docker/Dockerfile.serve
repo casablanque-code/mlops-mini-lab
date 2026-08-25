@@ -10,10 +10,23 @@ COPY models/ models/
 
 ENV MODEL_URI=file:./models/model.joblib
 ENV N_FEATURES=8
+# Tune to available CPU cores; (2 x cores) + 1 is the common gunicorn
+# starting point, kept low here since this targets a laptop/small VM.
+ENV WEB_CONCURRENCY=2
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["uvicorn", "src.serve.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# gunicorn + uvicorn worker class: gunicorn handles process management
+# (worker restarts, graceful reload, pre-fork) while each worker runs a
+# real ASGI event loop via uvicorn.workers.UvicornWorker. Plain uvicorn
+# alone is single-process and fine for local dev (see `make serve`),
+# but doesn't use multiple cores or restart a crashed worker on its own.
+CMD ["sh", "-c", "gunicorn src.serve.app:app \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --workers ${WEB_CONCURRENCY} \
+    --bind 0.0.0.0:8000 \
+    --access-logfile - \
+    --error-logfile -"]

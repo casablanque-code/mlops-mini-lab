@@ -7,6 +7,7 @@ validation and Prometheus metrics.
 import logging
 import math
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import List
 
@@ -26,7 +27,9 @@ logging.basicConfig(
 logger = logging.getLogger("mlops-mini-lab.serve")
 
 # Examples:
-#   models:/mlops-mini-lab/Production   -> MLflow Model Registry, by stage
+#   models:/mlops-mini-lab@production   -> MLflow Model Registry, by alias
+#     (MLflow >= 2.9: stages like /Production are deprecated in favor of
+#      aliases -- see docs/runbook.md for how to set one)
 #   models:/mlops-mini-lab/3            -> MLflow Model Registry, by version
 #   runs:/<run_id>/model                -> a specific run's logged model
 #   file:./models/model.joblib          -> plain local file (dev/demo default)
@@ -51,6 +54,29 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="mlops-mini-lab inference", version="0.2.0", lifespan=lifespan)
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Logs every request with method, path, status code, and latency.
+
+    This is deliberately basic (structured enough to grep, not a full
+    structured-logging setup) -- it's the minimum needed to answer
+    "what happened and how long did it take" without a metrics backend,
+    and it's the natural precursor to shipping these fields to a log
+    aggregator later.
+    """
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "%s %s -> %s (%.1fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 
 def _sanitize_for_json(obj):

@@ -80,11 +80,15 @@ def main() -> None:
         print(f"MLflow run id: {run.info.run_id}")
         if args.registered_model_name:
             print(
-                f"Registered as '{args.registered_model_name}'. "
-                f"Promote a version to Production via the MLflow UI or:\n"
-                f"  mlflow models transition-stage "
-                f"--name {args.registered_model_name} --version <N> "
-                f"--stage Production"
+                f"Registered as '{args.registered_model_name}' (version will be "
+                f"shown above/in the MLflow UI).\n"
+                f"MLflow stages (Staging/Production) are deprecated -- use an "
+                f"alias instead:\n"
+                f"  mlflow models set-registered-model-alias "
+                f"--name {args.registered_model_name} --alias production "
+                f"--version <N>\n"
+                f"Then point the serving service at:\n"
+                f"  MODEL_URI=models:/{args.registered_model_name}@production"
             )
 
 

@@ -159,3 +159,55 @@ Kubernetes, where it can be done properly with a Prometheus Operator
 and a GitOps-managed config -- rather than built twice (once in
 Compose, once in k8s). `/metrics` being exposed now means nothing
 downstream needs to change when that stack is added later.
+
+---
+
+## 9. CI model-quality gate: fixed accuracy threshold, not commit-to-commit comparison
+
+**Decision:** `ci.yml` fails the build if `metrics.json`'s `accuracy`
+falls below a hardcoded `MIN_ACCURACY` env var (`0.65` on the smoke
+sample).
+
+**Alternatives considered:** compare against the previous commit's (or
+`main`'s) metrics and fail on any regression, e.g. via `dvc metrics
+diff` against a base ref.
+
+**Why the fixed threshold won for now:** a commit-to-commit comparison
+needs a persisted baseline to diff against, which in turn needs either
+committing `metrics.json`/`dvc.lock` outputs to Git history in a way
+`dvc metrics diff` can read, or fetching the base branch's artifacts
+in CI (extra checkout/fetch depth, and a decision about what happens
+when the baseline itself doesn't exist yet, e.g. on the first commit).
+A fixed floor requires none of that and already catches the failure
+mode that matters most for a lab project: a code change that silently
+makes the model perform little better than chance. The threshold is
+deliberately loose (0.65, on a tiny 300-sample smoke set) because the
+goal is "catch obviously broken", not "gate on model quality" -- a
+real training run's metrics should be judged in the MLflow UI, not by
+a CI pass/fail. A commit-to-commit `dvc metrics diff` gate is a
+reasonable follow-up once the pipeline runs on real (non-synthetic)
+data where regressions are more meaningful to catch automatically.
+
+---
+
+## 10. Stages deprecated -> MLflow Model Registry aliases
+
+**Decision:** the Model Registry section of this project (`train.py`'s
+`--registered-model-name`, `serve/app.py`'s `MODEL_URI` handling, and
+the runbook) uses aliases (`models:/<name>@<alias>`,
+`set-registered-model-alias`), not the older stage-based API
+(`transition-stage`, `models:/<name>/Production`).
+
+**Context:** the initial version of this project was written against
+the stage-based API, which was the standard MLflow pattern for years.
+MLflow subsequently deprecated stages in the newer Model Registry UI
+in favor of aliases -- arbitrary string labels on a version, not tied
+to a fixed lifecycle (`None -> Staging -> Production -> Archived`).
+
+**Why aliases won (once available):** aliases are more flexible --
+nothing forces "production" to be a single reserved word, and multiple
+aliases can point at different versions simultaneously (e.g.
+`champion`/`challenger` for a canary setup) without needing MLflow to
+model that as a special case. Since stages are deprecated in the
+current MLflow version this project pins (2.16.2), aliases are also
+simply the supported path going forward.

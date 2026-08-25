@@ -6,6 +6,18 @@ on:
   push:
     branches: [main]
 
+env:
+  # Hard floor for test-set accuracy on the CI smoke run. Deliberately
+  # loose: the smoke dataset is tiny (300 samples, 6 features, for
+  # speed), so accuracy is noisier than on a full training run -- this
+  # threshold exists to catch a broken pipeline (e.g. a bug that makes
+  # predictions effectively random, around 0.5-0.6 for this class
+  # balance), not to gate on model quality in the way a real training
+  # run's metrics should be judged. See docs/decisions.md for why a
+  # fixed threshold was chosen first and what a commit-to-commit
+  # comparison (e.g. via `dvc metrics diff`) would add on top.
+  MIN_ACCURACY: "0.65"
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
@@ -58,6 +70,19 @@ jobs:
 
       - name: Evaluate
         run: python src/evaluate.py --model-path models/model.joblib --test-path data/processed/test.csv
+
+      - name: Enforce minimum accuracy
+        run: |
+          python -c "
+          import json, sys
+          metrics = json.load(open('metrics.json'))
+          accuracy = metrics['accuracy']
+          threshold = float('${{ env.MIN_ACCURACY }}')
+          print(f'accuracy={accuracy} threshold={threshold}')
+          if accuracy < threshold:
+              print(f'::error::Model accuracy {accuracy} is below the minimum {threshold}')
+              sys.exit(1)
+          "
 
   build-images:
     runs-on: ubuntu-latest
