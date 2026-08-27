@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mlops-mini-lab-serve
+description: Helm chart for the mlops-mini-lab inference (serve) service
+type: application
+version: 0.1.0
+appVersion: "v1"
