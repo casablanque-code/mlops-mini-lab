@@ -133,6 +133,31 @@ Note: images must be referenced as `mlops-registry:5000/...` (not
 registry's address as seen from inside the cluster network, set up
 via k3d's `registries.yaml`.
 
+## GitOps with Argo CD
+
+Argo CD watches `deploy/serve-chart` on `main` and keeps the cluster
+in sync automatically (auto-sync + self-heal + prune).
+
+```bash
+# install Argo CD into the cluster
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --server-side
+
+# get the initial admin password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+# access the UI
+kubectl -n argocd port-forward svc/argocd-server 8081:443
+# open https://localhost:8081 (login: admin)
+
+# register the app (or just kubectl apply -f deploy/argocd-application.yaml)
+kubectl apply -f deploy/argocd-application.yaml
+argocd app get mlops-serve
+```
+
+From now on, changes to `deploy/serve-chart` pushed to `main` are
+picked up and applied automatically — no manual `helm upgrade` needed.
+
 
 ## DVC pipeline (reproducibility)
 
