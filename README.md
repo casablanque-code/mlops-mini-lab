@@ -222,7 +222,7 @@ mlops-mini-lab/
 ## Roadmap (stage 2)
 
 - [x] Deploy `serve` to k3d/minikube via a Helm chart
-- [ ] Argo CD watching a `deploy/` folder — full GitOps loop
+- [x] Argo CD watching a `deploy/` folder — full GitOps loop
 - [ ] MLflow Model Registry with staging → production promotion
 - [ ] Data drift monitoring (evidently / whylogs)
 
