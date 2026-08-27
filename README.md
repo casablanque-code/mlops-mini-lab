@@ -103,6 +103,37 @@ docker compose up -d mlflow serve
 # Inference API:  http://localhost:8000/docs
 ```
 
+## Running on Kubernetes (k3d)
+
+Local Kubernetes deployment via k3d with a built-in registry.
+
+```bash
+# 1. create a cluster with a local registry, port 8080 -> ingress
+k3d cluster create mlops-lab \
+  --registry-create mlops-registry:0.0.0.0:5000 \
+  --port "8080:80@loadbalancer" \
+  --agents 1
+
+# 2. build and push the serve image to the cluster registry
+docker build -t localhost:5000/mlops-mini-lab-serve:v1 -f docker/Dockerfile.serve .
+docker push localhost:5000/mlops-mini-lab-serve:v1
+
+# 3. deploy via Helm
+helm install mlops-serve deploy/serve-chart
+
+# 4. test through the traefik ingress
+curl -H "Host: serve.mlops.local" http://localhost:8080/health
+curl -X POST -H "Host: serve.mlops.local" -H "Content-Type: application/json" \
+  http://localhost:8080/predict \
+  -d '{"features": [0.1, 0.2, -0.3, 0.4, 0.0, 0.7, -0.1, 0.3]}'
+```
+
+Note: images must be referenced as `mlops-registry:5000/...` (not
+`localhost:5000/...`) inside Kubernetes manifests — that's the
+registry's address as seen from inside the cluster network, set up
+via k3d's `registries.yaml`.
+
+
 ## DVC pipeline (reproducibility)
 
 ```bash
@@ -165,7 +196,7 @@ mlops-mini-lab/
 
 ## Roadmap (stage 2)
 
-- [ ] Deploy `serve` to k3d/minikube via a Helm chart
+- [x] Deploy `serve` to k3d/minikube via a Helm chart
 - [ ] Argo CD watching a `deploy/` folder — full GitOps loop
 - [ ] MLflow Model Registry with staging → production promotion
 - [ ] Data drift monitoring (evidently / whylogs)
